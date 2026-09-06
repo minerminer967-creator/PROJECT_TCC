@@ -1,6 +1,6 @@
 from flask import Flask
 from flask_cors import CORS
-from extensions import db, migrate
+from extensions import db
 from config import config
 
 
@@ -11,9 +11,12 @@ def criacao_app():
     db.init_app(app)
     CORS(app)
 
-    from routes.clientes import cliente_bp
+    from routes.clientes import clientes_bp
+    from routes.equipamentos import equipamento_bp
     from routes.ordens_servicos import os_bp
-    app.register_blueprint(cliente_bp, url_prefix='/api/clientes')
+
+    app.register_blueprint(clientes_bp, url_prefix='/api/clientes')
+    app.register_blueprint(equipamento_bp, url_prefix='/api/equipamentos')
     app.register_blueprint(os_bp, url_prefix='/api/ordens-servicos')
 
     with app.app_context():
