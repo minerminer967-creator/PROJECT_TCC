@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
-from models import OrdemServico
+from models import OrdemServico, Peca
 
 os_bp = Blueprint('ordem_servico', __name__)
 
@@ -48,9 +48,30 @@ def atualizar_ordem_servico(id):
     ordem_servico.diagnostico = data.get(
         'diagnostico', ordem_servico.diagnostico)
     ordem_servico.status = data.get('status', ordem_servico.status)
-    ordem_servico.peca_id = data.get('peca_id', ordem_servico.peca_id)
     ordem_servico.valor = data.get('valor', ordem_servico.valor)
     ordem_servico.pago = data.get('pago', ordem_servico.pago)
 
+    novo_peca_id = data.get('peca_id')
+
+    if novo_peca_id is not None and novo_peca_id != ordem_servico.peca_id:
+        peca = Peca.query.get(novo_peca_id)
+        if not peca:
+            return jsonify({"erro": "peca_id informado não existe"}), 404
+
+        if peca.estoque <= 0:
+            return jsonify({"erro": f"estoque insuficiente para a peça '{peca.nome}'"}), 400
+
+        if ordem_servico.peca_id:
+            peca_antiga = Peca.query.get(ordem_servico.peca_id)
+            if peca_antiga:
+                peca_antiga.estoque += 1
+
+        peca.estoque -= 1
+        ordem_servico.peca_id = novo_peca_id
+
     db.session.commit()
-    return jsonify({"message": "Ordem de serviço atualizada com sucesso.", "status": ordem_servico.status})
+    return jsonify({
+        "message": "Ordem de serviço atualizada com sucesso.",
+        "status": ordem_servico.status,
+        "peca_id": ordem_servico.peca_id
+    })

@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from models import Cliente
+from sqlalchemy.exc import IntegrityError
 
 clientes_bp = Blueprint('clientes', __name__)
 
@@ -29,7 +30,12 @@ def criar_cliente():
         endereco=dados.get("endereco", "")
     )
     db.session.add(cliente)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"erro": "telefone ou email já cadastrado"}), 409
+
     return jsonify({"id": cliente.id, "nome": cliente.nome}), 201
 
 
