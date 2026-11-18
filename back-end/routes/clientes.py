@@ -2,6 +2,8 @@ from flask import Blueprint, request, jsonify
 from extensions import db
 from models import Cliente
 from sqlalchemy.exc import IntegrityError
+from flask_jwt_extended import jwt_required   # NOVO
+from permissoes import perfil_requerido      # NOVO
 
 clientes_bp = Blueprint('clientes', __name__)
 
@@ -18,6 +20,7 @@ def listar_clientes():
 
 
 @clientes_bp.route('/', methods=['POST'])
+@jwt_required()                                # NOVO
 def criar_cliente():
     dados = request.get_json()
     if not dados.get("nome"):
@@ -40,6 +43,7 @@ def criar_cliente():
 
 
 @clientes_bp.route('/<int:id>', methods=['PUT'])
+@jwt_required()                                # NOVO
 def atualizar_cliente(id):
     cliente = Cliente.query.get_or_404(id)
     dados = request.get_json()
@@ -51,6 +55,7 @@ def atualizar_cliente(id):
 
 
 @clientes_bp.route('/<int:id>', methods=['DELETE'])
+@perfil_requerido('admin')                     # NOVO
 def deletar_cliente(id):
     cliente = Cliente.query.get_or_404(id)
     db.session.delete(cliente)

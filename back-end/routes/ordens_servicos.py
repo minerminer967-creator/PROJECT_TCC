@@ -1,8 +1,15 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
-from models import OrdemServico, Peca
+from models import OrdemServico, Peca, Equipamento
+from sqlalchemy.exc import IntegrityError
+from flask_jwt_extended import jwt_required
 
 os_bp = Blueprint('ordem_servico', __name__)
+
+STATUS_VALIDOS = {
+    'aguardando_diagnostico', 'em_manutencao', 'aguardando_peca',
+    'concluido', 'entregue', 'cancelado'
+}
 
 
 @os_bp.route("/", methods=["GET"])
@@ -21,29 +28,44 @@ def listar_ordem_servico():
 
 
 @os_bp.route("/", methods=["POST"])
+@jwt_required()
 def criar_ordem_servico():
     data = request.get_json()
     if not data.get('equipamento_id') or not data.get('problema'):
         return jsonify({"erro": "equipamento_id e problema são obrigatórios"}), 400
 
+    if not Equipamento.query.get(data['equipamento_id']):
+        return jsonify({"erro": "equipamento_id informado não existe"}), 404
+
+    status = data.get('status', 'aguardando_diagnostico')
+    if status not in STATUS_VALIDOS:
+        return jsonify({"erro": f"status inválido. Use: {sorted(STATUS_VALIDOS)}"}), 400
+
     ordem_servico = OrdemServico(
         equipamento_id=data['equipamento_id'],
         problema_relatado=data['problema'],
         diagnostico=data.get('diagnostico'),
-        status=data.get('status', 'aguardando_diagnostico'),
-        peca_id=data.get('peca_id'),
+        status=status,
         valor=data.get('valor', 0.0),
         pago=data.get('pago', False)
     )
     db.session.add(ordem_servico)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"erro": "dados inválidos (valor não pode ser negativo)"}), 400
     return jsonify({"id": ordem_servico.id, "status": ordem_servico.status}), 201
 
 
 @os_bp.route("/<int:id>", methods=["PUT"])
+@jwt_required()
 def atualizar_ordem_servico(id):
     ordem_servico = OrdemServico.query.get_or_404(id)
     data = request.get_json()
+
+    if 'status' in data and data['status'] not in STATUS_VALIDOS:
+        return jsonify({"erro": f"status inválido. Use: {sorted(STATUS_VALIDOS)}"}), 400
 
     ordem_servico.diagnostico = data.get(
         'diagnostico', ordem_servico.diagnostico)
@@ -56,9 +78,11 @@ def atualizar_ordem_servico(id):
     if novo_peca_id is not None and novo_peca_id != ordem_servico.peca_id:
         peca = Peca.query.get(novo_peca_id)
         if not peca:
+            db.session.rollback()
             return jsonify({"erro": "peca_id informado não existe"}), 404
 
         if peca.estoque <= 0:
+            db.session.rollback()
             return jsonify({"erro": f"estoque insuficiente para a peça '{peca.nome}'"}), 400
 
         if ordem_servico.peca_id:
@@ -69,7 +93,12 @@ def atualizar_ordem_servico(id):
         peca.estoque -= 1
         ordem_servico.peca_id = novo_peca_id
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"erro": "dados inválidos (valor não pode ser negativo)"}), 400
+
     return jsonify({
         "message": "Ordem de serviço atualizada com sucesso.",
         "status": ordem_servico.status,
