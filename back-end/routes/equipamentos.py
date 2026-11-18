@@ -1,6 +1,9 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from models import Equipamento, Cliente
+from sqlalchemy.exc import IntegrityError
+from flask_jwt_extended import jwt_required
+from permissoes import perfil_requerido
 
 equipamento_bp = Blueprint('equipamento', __name__)
 
@@ -28,6 +31,7 @@ def obter_equipamento(id):
 
 
 @equipamento_bp.route("/", methods=["POST"])
+@jwt_required()
 def criar_equipamento():
     data = request.get_json()
     if not data.get('cliente_id') or not data.get('nome'):
@@ -48,6 +52,7 @@ def criar_equipamento():
 
 
 @equipamento_bp.route("/<int:id>", methods=["PUT"])
+@jwt_required()
 def atualizar_equipamento(id):
     equipamento = Equipamento.query.get_or_404(id)
     data = request.get_json()
@@ -58,8 +63,13 @@ def atualizar_equipamento(id):
 
 
 @equipamento_bp.route("/<int:id>", methods=["DELETE"])
+@perfil_requerido('admin')
 def deletar_equipamento(id):
     equipamento = Equipamento.query.get_or_404(id)
     db.session.delete(equipamento)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"erro": "equipamento possui ordens de serviço e não pode ser removido"}), 409
     return jsonify({"mensagem": "equipamento removido"})
